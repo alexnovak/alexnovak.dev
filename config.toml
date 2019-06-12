@@ -1,0 +1,5 @@
+baseURL = "https://alexnovak.dev"
+languageCode = "en-us"
+theme = "hugo-paper"
+title = "What Alex thinks"
+author = "Alex"
