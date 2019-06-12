@@ -1,4 +1,4 @@
-baseURL = "https://alexnovak.dev"
+baseURL = "https://blog.alexnovak.dev"
 languageCode = "en-us"
 theme = "hugo-paper"
 title = "What Alex thinks"
