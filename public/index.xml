@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>What Alex thinks</title>
+    <link>https://blog.alexnovak.dev/</link>
+    <description>Recent content on What Alex thinks</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Tue, 11 Jun 2019 22:14:35 -0400</lastBuildDate>
+    
+	<atom:link href="https://blog.alexnovak.dev/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>This is a test</title>
+      <link>https://blog.alexnovak.dev/posts/test-post/</link>
+      <pubDate>Tue, 11 Jun 2019 22:14:35 -0400</pubDate>
+      
+      <guid>https://blog.alexnovak.dev/posts/test-post/</guid>
+      <description>Not much here right now &amp;ndash; but boy oh boy is there more to come.</description>
+    </item>
+    
+  </channel>
+</rss>
