@@ -40,7 +40,7 @@
   background: linear-gradient(135deg, #ddd, #f5f5f5, #d5d5d5);
 }
 .dark.list {
-  background: linear-gradient(135deg, #1c1c1c, #2a2a2a, #000);
+  background: #2a2a2a;
 }
 /* Reset
 -------------------------------------------------- */

@@ -9,37 +9,117 @@ A few weeks ago, a friend and I were taking a walk when he shared an old intervi
 
 > Generate a random die-roll. One through six.
 
-This was a lead in to a longer, harder question, but was there to get the ball rolling.
-Both he and the interviewer agreed it was fine to just grab some random integer, so some randum unsigned 32 bit integer,
-apply a modulo 6, and then add one. Okay, sounds good. You get a random number between zero and five, 
-you add one, and you get one to six.
+He and the interviewer agreed that a good approach was to grab a random integer and 
+apply modulus 6, to get a random number between zero and five, then add one. Cool, easy,
+classic method of getting a random number. The interviewer then added a twist.
 
-Let's look at this quickly and transparently in Rust just so we have an example of what we're talking about. 
+> The service we're using to get our random numbers is extremly expensive. How can we
+> emulate rolling two dice, and taking their sum?
+
+My friend posed the question to me. I had been doing some bit-fiddling and proposed that what felt
+like an easy solution. When we got a random integer, we were getting some stream of random bits,
+probably 32 or 64. Say we got 32 random bits, we could just split them into two 16 bit integers,
+repeat the process for a single single die roll, then add the results. For
+example, say we requested random bits and received the following:
+
+$$ \mbox\{random value\} = 0b10001000110010011111110011000010$$
+We can define two random numbers by splitting that bit vector down the middle.
+$$ \mbox\{rand1\} = 0b1000100011001001 = 3507 \\\\
+\mbox\{rand2\} = 0b1111110011000010 = 64706$$
+
+Then modulus both of these by 6, add one to each, then add them together. In this case, giving
+us 5.
+
+Feeling overzealous, I thought that maybe you could even do it with fewer bits. Why 32? You
+only need three bits to represent 0 through 5. Six random bits, enough for two three bit integers, 
+should be enough to solve this entire problem. 
+
+Walking home later that day, I realized something was wrong.
+
+---
+
+Let's quickly look at my three bit method in Rust so we can laugh at what a fool I am.
 
 ```rust
 // In main.rs
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Error, Read};
 
 // Slapdash code to grab a random u32 value.
 fn get_random_int() -> Result<u32, Error> {
-    let mut urandom = File::open("/dev/urandom")?;
+    // Use urandom as a source of random bits.
+    let urandom = File::open("/dev/urandom")?;
+    // Take gives us a handle that, when read, gives us only n bytes. 1 in this case.
+    let mut handle = urandom.take(1);
     let mut buf = [0_u8; 4];
-    urandom.read(&mut buf)?;
+    handle.read(&mut buf)?;
+    /* Snip off all but the last three bits.
+     * I won't lie that it took me a few guesses for which bits to snip.
+     * Endianness is hard.
+     */
+    buf[0] &= 0b00000111;
     // Rust hackery to turn four u8s into a u32.
-    // Here we assume the bytes are little endian, but it really doesn't matter.
     let res = u32::from_le_bytes(buf);
     Ok(res)
 }
 
+// This is just our die roll as a function.
+fn die_roll(random_int: u32) -> u32 {
+    random_int % 6 + 1
+}
+
+// Run some specified number of trials of our die roll experiment,
+// keeping the frequency of our results in a map.
+fn get_longrunning_frequency(trials: u32) -> Result<BTreeMap<u32, u32>, Error> {
+
+    let mut frequency: BTreeMap<u32, u32> = BTreeMap::new();
+    for _ in 0..trials {
+        let number = get_random_int()?;
+        let roll = die_roll(number);
+        // Little weird rust hack, if the entry for a value doesn't exist, insert 0.
+        let counter = frequency.entry(roll).or_insert(0);
+        *counter += 1;
+    }
+    Ok(frequency)
+}
+
 fn main() -> Result<(), Error> {
-    let random = get_random_int()?;
-    println!("Random number is: {}", random % 6 + 1);
+    let trials = 10_000;
+    let frequency = get_longrunning_frequency(trials)?;
+    for (value, appearances) in frequency {
+        println!(
+            "Value: {}, frequency: {}, percentage: {}%",
+            value,
+            appearances,
+            100.0 * appearances as f64 / trials as f64
+        );
+    }
     Ok(())
 }
 ```
 
-The above code reaches out to some source of randomness (in this case `/dev/urandom`), and gets four bytes.
+The above code runs 10,000 trials of performing a random die roll using our described method, and lays out some basic
+statistics about our results. If our method of obtaining random die rolls is accurate, then the frequency and percentage
+of each value will be roughly the same.
+
+```shell
+$ cargo run
+    Finished dev [unoptimized + debuginfo] target(s) in 0.02s
+         Running `target/debug/die-roll`
+         Value: 1, frequency: 2568, percentage: 25.68%
+         Value: 2, frequency: 2533, percentage: 25.33%
+         Value: 3, frequency: 1207, percentage: 12.07%
+         Value: 4, frequency: 1225, percentage: 12.25%
+         Value: 5, frequency: 1232, percentage: 12.32%
+         Value: 6, frequency: 1235, percentage: 12.35%
+```
+
+We can see that isn't the case at all. One and two are twice as likely as any other value. But why is that?
+
+---
+
+The above code reaches out to some source of randomness (in this case `/dev/urandom`), and gets a single byte.
 It then casts these four bytes as an unsigned integer, and performs our little "die roll from a random integer" algorithm.
 If we run this a few times, we'll see we get expected results.
 
