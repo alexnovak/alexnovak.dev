@@ -2,7 +2,7 @@
 date: 2020-03-22
 title: Die Roll
 author: Alex
-draft: false
+draft: true
 ---
 
 A few weeks ago, a friend and I were taking a walk when he shared an old interview question.
@@ -10,7 +10,7 @@ A few weeks ago, a friend and I were taking a walk when he shared an old intervi
 > Generate a random die-roll. One through six.
 
 He and the interviewer agreed that a good approach was to grab a random integer and 
-apply modulus 6, to get a random number between zero and five, then add one. Cool, easy,
+apply modulus 6 to get a random number between zero and five, then add one. Cool, easy,
 classic method of getting a random number. The interviewer then added a twist.
 
 > The service we're using to get our random numbers is extremly expensive. How can we
@@ -18,27 +18,30 @@ classic method of getting a random number. The interviewer then added a twist.
 
 My friend posed the question to me. I had been doing some bit-fiddling and proposed that what felt
 like an easy solution. When we got a random integer, we were getting some stream of random bits,
-probably 32 or 64. Say we got 32 random bits, we could just split them into two 16 bit integers,
-repeat the process for a single single die roll, then add the results. For
+probably 32 or 64. Say we got 32 random bits, we could just split them into two 16 bit integerers, 
+take the mod 6 of each and add one to each, then add the results. For
 example, say we requested random bits and received the following:
 
 $$ \mbox\{random value\} = 0b10001000110010011111110011000010$$
 We can define two random numbers by splitting that bit vector down the middle.
-$$ \mbox\{rand1\} = 0b1000100011001001 = 3507 \\\\
+$$ 1000100011001001 \mid 1111110011000010 \\\\
+\mbox\{rand1\} = 0b1000100011001001 = 3507 \\\\
 \mbox\{rand2\} = 0b1111110011000010 = 64706$$
 
-Then modulus both of these by 6, add one to each, then add them together. In this case, giving
-us 5.
+Then modulus both of these by 6 and add one to each. These both emulate single die rolls.
+Adding them together gives us a random sum of two die rolls. In this case giving us 5.
 
 Feeling overzealous, I thought that maybe you could even do it with fewer bits. Why 32? You
-only need three bits to represent 0 through 5. Six random bits, enough for two three bit integers, 
+only need three bits to represent 0 through 5. Six random bits -- enough for two three-bit integers -- 
 should be enough to solve this entire problem. 
 
-Walking home later that day, I realized something was wrong.
+Walking home later that day, I realized I was wrong.
 
 ---
 
 Let's quickly look at my three bit method in Rust so we can laugh at what a fool I am.
+We'll emulate a single die roll for simplicity's sake, and observe many trials to see how the 
+method performs in aggregate.
 
 ```rust
 // In main.rs
@@ -99,7 +102,7 @@ fn main() -> Result<(), Error> {
 }
 ```
 
-The above code runs 10,000 trials of performing a random die roll using our described method, and lays out some basic
+The above code runs 10,000 trials of a random die roll using our described method, and lays out some basic
 statistics about our results. If our method of obtaining random die rolls is accurate, then the frequency and percentage
 of each value will be roughly the same.
 
@@ -115,7 +118,103 @@ $ cargo run
          Value: 6, frequency: 1235, percentage: 12.35%
 ```
 
-We can see that isn't the case at all. One and two are twice as likely as any other value. But why is that?
+This makes for a poor die, both one and two are twice as likely as any other value! But why is that? 
+I won't write out the code, but to check our sanity here's what the program looks like using the full 32 bits.
+
+```shell
+$ cargo run
+    Finished dev [unoptimized + debuginfo] target(s) in 0.02s
+         Running `target/debug/die-roll`
+         Value: 1, frequency: 1675, percentage: 16.75%
+         Value: 2, frequency: 1673, percentage: 16.73%
+         Value: 3, frequency: 1654, percentage: 16.54%
+         Value: 4, frequency: 1655, percentage: 16.55%
+         Value: 5, frequency: 1681, percentage: 16.81%
+         Value: 6, frequency: 1662, percentage: 16.62%
+```
+All those percentages look roughly the same, which makes this more puzzling. Why does adding more bits make this more even?
+Maybe we need to think about this a little more carefully. Let's try more formally defining our process.
+
+Our method has two basic steps, gathering some random data, and then mapping that random data
+to a value between one through six. Our mapping is pretty easy to understand, just a modulus and some addition, but maybe we can
+focus more on our source of random data.
+
+In the code above I elected to use `urandom`. Random numbers in operating systems are complicated, and I am very far from an expert,
+but as far as I can tell, `urandom` delivers uniformly distributed bytes. That is, a read for a single byte has an equal chance of 
+returning any byte. [^1] In a simlar vein, reading two bytes has an equal chance of returning any two byte sequence, and so on and 
+so forth. This gives us a handy method for generating random numbers between 0 and $2^n-1$ for some $n$. For example, if we read
+only one byte, we have a way of generating a random number between 0 and 255 ($2^8-1$). Like in the three bit example, if we want a 
+smaller range, we can mask bits. Above, we masked out all but three to have a way of uniformly generating random numbers between
+0 and 7.
+
+But here's the problem. We can **only** generate random numbers between 0 and $2^n-1$.
+
+Our mapping step looks like the following:
+$$f(x) = \(x \mod 6\) + 1$$
+Where $x \in \\{0, 1, 2, 3, 4, 5, 6, 7\\}$, the set of numbers expressible in three bits. If we get a 0 through 5, everything
+works perfectly fine, but both 6 and 7 will wrap around, giving an extra chance for 1 or 2 to appear in our die roll. The following
+diagram of inputs to outputs helps make this clear.
+
+$$ \begin\{pmatrix\}
+0 & \rightarrow & 1\\\\
+1 & \rightarrow & 2\\\\
+2 & \rightarrow & 3\\\\
+3 & \rightarrow & 4\\\\
+4 & \rightarrow & 5\\\\
+5 & \rightarrow & 6\\\\
+6 & \rightarrow & 1 & \mbox\{(repeat)\} \\\\
+7 & \rightarrow & 2 & \mbox\{(repeat)\} \\\\
+\end\{pmatrix\} $$ 
+
+This is not necessarily because we have a wraparound, but because our count of inputs isn't divisible by 6.
+Say we lived in a magical world where three bits contained 12 values, then we would have no problem, since
+our modulus would have two mappings to 0 through 5. 0 and 6 would both map to 0 in mod 6, both 1 and 7 would
+map to 1 in mod 6, and so on.
+
+This explains why we get the double chance using 8 bits, but why do things get better when we use 32 bits?
+Well, with 32 bits our pool of possible inputs to our function massively increases. In our original set of 8,
+we saw two numbers that wrapped around a multiple of six, how many do we see in our new size of 4294967296?
+
+$$ \begin\{pmatrix\}
+0 & \rightarrow & 1 \\\\
+1 & \rightarrow & 2 \\\\
+2 & \rightarrow & 3 \\\\
+3 & \rightarrow & 4 \\\\
+4 & \rightarrow & 5 \\\\
+5 & \rightarrow & 6 \\\\
+6 & \rightarrow & 1 \\\\
+7 & \rightarrow & 2 \\\\
+ & \vdots &  \\\\
+4294967291 & \rightarrow & 5 \\\\
+4294967292 & \rightarrow & 0 \\\\
+4294967293 & \rightarrow & 1 \\\\
+4294967294 & \rightarrow & 2 \\\\
+4294967295 & \rightarrow & 3 \\\\
+\end\{pmatrix\} $$ 
+
+We see that we have a wraparound of the last four values, meaning
+0, 1, 2, and 3 will be more likely than 5 or 6. But how much more likely?
+$\frac\{2^\{32\}\}\{6\} = 715827882.\bar\{6\}$, meaning each both
+5 and 6 have odds of 715827882 in $2^\{32\}$ of being selected, 
+while 0, 1, 2, and 3 have their odds increased by one,
+715827883 in $2^\{32\}$. This makes up a very very slight difference,
+in probability. 0.1666666665 vs 0.1666666667. It would take tens of 
+millions of trials before a difference in likelihood is noticed, and
+even then it would be a very slight difference.
+
+So using more bits makes it really really close to uniform. But 
+it isn't uniform. We made things significantly better and closer, but what if we needed exact uniformity?
+
+I spent a few days trying to think this over without looking it up. No matter what I thought up, there was
+no real way of getting rid of your overlap. It's not like you could throw it away. Right?
+
+I eventually gave up and looked up how Python did it, I was surprised that they did it the way that they did.
+Thinking that surely there was another way to do it, I looked at both the Rust `rand` crate, and the C++ 
+boost implementation of `uniform_int_distribution` and was surprised to see they *all* did it the same way.
+
+Let's do our exact same method, but if our source of randomness gives us something greater than the
+last multiple of six in 32 bits, request a new random number.
+
 
 ---
 
@@ -415,4 +514,6 @@ because of our representation, and took a peek at the properties of a workaround
 
 I hope this was an insightful read! Any questions, concerns or complaints can be directed to alex[[at]]alexnovak.dev
 
+[^1]: No documentation I can find on `urandom` will make the claim of uniformity, and if anybody has any details I'd
+love an email or a ping with those details. 
 
