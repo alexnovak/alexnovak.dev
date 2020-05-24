@@ -1,9 +1,9 @@
 [build]
 publish = "public"
-command = "git submodule update --init; hugo --gc --minify"
+command = "hugo --gc --minify"
 
 [context.production.environment]
-HUGO_VERSION = "0.53"
+HUGO_VERSION = "0.68"
 HUGO_ENV = "production"
 HUGO_ENABLEGITINFO = "true"
 
